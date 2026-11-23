@@ -1,7 +1,8 @@
 public class Process{
-    private String name;
-    private int arrivalTime;
-    private int burstTime;
+    
+    private final String name;
+    private final int arrivalTime;
+    private final int burstTime;
     private int priority;
     private int finishTime;
     private int turnAroundTime;
