@@ -1,18 +1,18 @@
 public class SimulationConfig{
     
-    private final int _cs;
-    private final int _q;
+    private final int cs;
+    private final int q;
 
     public SimulationConfig(int cs, int q){
-        _cs = cs;
-        _q = q;
+        this.cs = cs;
+        this.q = q;
     }
 
     public int getCS(){
-        return _cs;
+        return cs;
     }
 
     public int getQ(){
-        return _q;
+        return q;
     }
 }
