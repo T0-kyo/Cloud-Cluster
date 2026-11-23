@@ -3,6 +3,7 @@ public class Process{
     private final String name;
     private final int arrivalTime;
     private final int burstTime;
+    private int remainingTime;
     private int priority;
     private int finishTime;
     private int turnAroundTime;
@@ -14,6 +15,7 @@ public class Process{
         this.arrivalTime = arrivalTime;
         this.burstTime = burstTime;
         this.priority = priority;
+        this.remainingTime = burstTime;
         this.finishTime = 0;
         this.turnAroundTime = 0;
         this.waitingTime = 0;
@@ -32,6 +34,9 @@ public class Process{
     }
     public int getBurstTime() {
         return burstTime;
+    }
+    public int getRemainingTime() {
+        return remainingTime;
     }
     public int getPriority() {
         return priority;
@@ -57,5 +62,8 @@ public class Process{
     }
     public void setWaitingTime(int waitingTime){
         this.waitingTime = waitingTime;
+    }
+    public void setRemainingTime(int remainingTime) {
+        this.remainingTime = remainingTime;
     }
 }
