@@ -8,6 +8,7 @@ public class Process{
     private int turnAroundTime;
     private int waitingTime;
 
+    // For ACS
     public Process(String name, int arrivalTime, int burstTime, int priority){
         this.name = name;
         this.arrivalTime = arrivalTime;
@@ -16,6 +17,11 @@ public class Process{
         this.finishTime = 0;
         this.turnAroundTime = 0;
         this.waitingTime = 0;
+    }
+
+    // For SJF
+    public Process(String name, int arrivalTime, int burstTime){
+        this(name, arrivalTime, burstTime, 0);
     }
 
     public String getName() {
