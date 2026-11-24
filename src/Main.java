@@ -1,4 +1,5 @@
 import java.util.ArrayList;
+import java.util.List;
 import java.util.Scanner;
 public class Main {
     private static final Scanner scanner = new Scanner(System.in);
@@ -80,6 +81,10 @@ public class Main {
                 int choice = acsChoice();
                 IScheduler scheduler = new ACS();
                 ArrayList<Process> processes = testCaseProcesses(choice);
+                if (choice != 1 && choice != 2 && choice != 3) {
+                    System.out.println("Invalid test case choice.");
+                    continue;
+                }
                 SimulationConfig config;
                 if(choice == 1){
                     config = new SimulationConfig(0, 3);
@@ -88,13 +93,34 @@ public class Main {
                     config = new SimulationConfig(1, 3);
                 }
                 else config = config();
+                
+                List<SimulationResult> result = scheduler.simulate(processes, config);
+                for(SimulationResult R : result){
+                    System.out.println(R);
+                }
 
-                scheduler.simulate(processes, config);
+                double totalWT = 0, totalTAT = 0, totalRT = 0;
+                System.out.println("\nProcess | Arrival | Finish | TAT | WT | RT");
+                for (Process proc : processes) {
+                    totalWT += proc.getWaitingTime();
+                    totalTAT += proc.getTurnAroundTime();
+                    totalRT += proc.getResponseTime();
+                    System.out.printf("%s | %d | %d | %d | %d | %d%n",
+                            proc.getName(), proc.getArrivalTime(), proc.getFinishTime(),
+                            proc.getTurnAroundTime(), proc.getWaitingTime(), proc.getResponseTime());
+                }
+                if (!processes.isEmpty()) {
+                    System.out.printf("Average Turnaround Time: %.2f%n", totalTAT / processes.size());
+                    System.out.printf("Average Waiting Time: %.2f%n", totalWT / processes.size());
+                    System.out.printf("Average Response Time: %.2f%n", totalRT / processes.size());
+                }
             }
+
             else if(option == 3){
                 scanner.close();
                 break;
             }
+
             else{
                 System.out.println("Invalid Choice.");
             }
