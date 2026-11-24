@@ -30,4 +30,16 @@ public class SimulationResult{
     public List<Process> getTier2Processes(){
         return tier2Processes;
     }
+
+    private String fmt(List<Process> list){
+    return list.isEmpty() ? "[Empty]" : list.toString();
+}
+
+    @Override
+    public String toString() {
+        return "Time " + time
+                + " | Running: " + (name == null || name.isEmpty() ? "Idle" : name)
+                + " | Tier 1: " + fmt(tier1Processes)
+                + " | Tier 2: " + fmt(tier2Processes);
+    }
 }
