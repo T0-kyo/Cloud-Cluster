@@ -1,3 +1,7 @@
+//TODO 1) Handling priority
+//TODO 2) Construct the result
+//TODO 3) Comment the code
+//TODO 4) Tier 2 wait calculation (add in process)
 import java.util.*;
 
 public class ACS implements IScheduler{
@@ -62,12 +66,15 @@ public class ACS implements IScheduler{
                     p.setRemainingTime(p.getRemainingTime() - 1);
 
                     if (p.getRemainingTime() == 0){
+                        p.setFinishTime(time);
+                        p.setTurnAroundTime(time - p.getArrivalTime());
+                        p.setWaitingTime(p.getTurnAroundTime() - p.getBurstTime());
                         tier2IsRunning = false;
                         cs = config.getCS();
                     }
 
                     for (Process process : tier2){
-                        process.setPriority(process.getPriority() + 1);
+                        process.setPriority(process.getPriority() + 1); // priority -= wait / min wait 
                     }
                 }
 
@@ -81,6 +88,9 @@ public class ACS implements IScheduler{
             q--;
 
             if (p.getRemainingTime() == 0){
+                p.setFinishTime(time);
+                p.setTurnAroundTime(time - p.getArrivalTime());
+                p.setWaitingTime(p.getTurnAroundTime() - p.getBurstTime());
                 q = config.getQ();
                 tier1.remove();
                 cs = config.getCS();
