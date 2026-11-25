@@ -9,7 +9,6 @@ import java.util.Map;
 
 public class MainFrame extends JFrame {
 
-    // ---- input ----
     private final DefaultTableModel inputModel =
             new DefaultTableModel(new String[]{"Name", "Arrival", "Burst", "Priority"}, 0);
     private final JTable inputTable = new JTable(inputModel);
@@ -20,7 +19,6 @@ public class MainFrame extends JFrame {
     private final JSpinner csSpinner = new JSpinner(new SpinnerNumberModel(0, 0, 100, 1));
     private final JSpinner qSpinner = new JSpinner(new SpinnerNumberModel(3, 1, 100, 1));
 
-    // ---- output ----
     private final GanttPanel gantt = new GanttPanel();
     private final DefaultTableModel resultModel =
             new DefaultTableModel(new String[]{"Process", "Arrival", "Finish", "TAT", "WT", "RT"}, 0);
@@ -45,7 +43,6 @@ public class MainFrame extends JFrame {
         setLocationRelativeTo(null);
     }
 
-    // ================= UI building =================
 
     private JComponent buildTopPanel() {
         JPanel p = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 6));
@@ -63,7 +60,6 @@ public class MainFrame extends JFrame {
     }
 
     private JComponent buildCenter() {
-        // --- input table + buttons ---
         JPanel inputPanel = new JPanel(new BorderLayout(4, 4));
         inputPanel.setBorder(BorderFactory.createTitledBorder("Processes"));
         inputPanel.add(new JScrollPane(inputTable), BorderLayout.CENTER);
@@ -90,13 +86,11 @@ public class MainFrame extends JFrame {
         buttons.add(t2);
         inputPanel.add(buttons, BorderLayout.SOUTH);
 
-        // --- gantt ---
         JPanel ganttWrap = new JPanel(new BorderLayout());
         ganttWrap.setBorder(BorderFactory.createTitledBorder("Gantt chart"));
         gantt.setPreferredSize(new Dimension(800, 100));
         ganttWrap.add(gantt, BorderLayout.CENTER);
 
-        // --- results table + averages ---
         JTable resultTable = new JTable(resultModel);
         resultTable.setEnabled(false);
         JPanel resultPanel = new JPanel(new BorderLayout(4, 4));
@@ -104,7 +98,6 @@ public class MainFrame extends JFrame {
         resultPanel.add(new JScrollPane(resultTable), BorderLayout.CENTER);
         resultPanel.add(averagesLabel, BorderLayout.SOUTH);
 
-        // --- log ---
         logArea.setEditable(false);
         logArea.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 12));
         JScrollPane logScroll = new JScrollPane(logArea);
@@ -122,7 +115,6 @@ public class MainFrame extends JFrame {
         return all;
     }
 
-    // ================= logic =================
 
     private boolean isSjf() {
         return "SJF".equals(algoBox.getSelectedItem());
@@ -173,10 +165,10 @@ public class MainFrame extends JFrame {
                     throw new NumberFormatException();
 
                 if (sjf) {
-                    list.add(new Process(name, arrival, burst));              // SJF constructor
+                    list.add(new Process(name, arrival, burst));              
                 } else {
                     int priority = Integer.parseInt(String.valueOf(inputModel.getValueAt(i, 3)).trim());
-                    list.add(new Process(name, arrival, burst, priority));    // ACS constructor
+                    list.add(new Process(name, arrival, burst, priority));    
                 }
             } catch (NumberFormatException ex) {
                 throw new IllegalArgumentException(
@@ -193,13 +185,12 @@ public class MainFrame extends JFrame {
             ArrayList<Process> processes = readProcesses(sjf);
 
             int cs = (Integer) csSpinner.getValue();
-            int q = sjf ? 0 : (Integer) qSpinner.getValue();      // SJF: SimulationConfig(cs, 0)
+            int q = sjf ? 0 : (Integer) qSpinner.getValue();      
             SimulationConfig config = new SimulationConfig(cs, q);
 
             IScheduler scheduler = sjf ? new SJF() : new ACS();
             List<SimulationResult> result = scheduler.simulate(processes, config);
 
-            // ----- log (same format as Main) -----
             logArea.setText("");
             for (SimulationResult r : result) {
                 if (sjf) {
@@ -212,10 +203,8 @@ public class MainFrame extends JFrame {
             }
             logArea.setCaretPosition(0);
 
-            // ----- gantt -----
             gantt.setSlices(buildSlices(result, processes));
 
-            // ----- results table + averages (same as Main.printMetrics) -----
             resultModel.setRowCount(0);
             double totalWT = 0, totalTAT = 0, totalRT = 0;
             for (Process p : processes) {
@@ -250,9 +239,7 @@ public class MainFrame extends JFrame {
         return items.toString();
     }
 
-    // ================= Gantt =================
 
-    /** One bar on the chart: who ran, from when to when. */
     private static class Slice {
         final String name;
         final int start, end;
@@ -263,11 +250,6 @@ public class MainFrame extends JFrame {
         }
     }
 
-    /**
-     * Each SimulationResult says "at time t, X is running". X keeps the CPU until the
-     * next result's time; the last one runs until the latest process finish time.
-     * Consecutive results with the same name are merged into one bar.
-     */
     private List<Slice> buildSlices(List<SimulationResult> results, List<Process> processes) {
         int maxFinish = 0;
         for (Process p : processes) maxFinish = Math.max(maxFinish, p.getFinishTime());
