@@ -18,12 +18,25 @@ public class MainFrame extends JFrame {
     private final JComboBox<String> algoBox = new JComboBox<>(new String[]{"SJF", "ACS"});
     private final JSpinner csSpinner = new JSpinner(new SpinnerNumberModel(0, 0, 100, 1));
     private final JSpinner qSpinner = new JSpinner(new SpinnerNumberModel(3, 1, 100, 1));
+    private final JSlider speedSlider = new JSlider(1, 10, 6);   
+    private final JButton runButton = new JButton("Run");
+    private final JButton resetButton = new JButton("Reset");
+    private final JLabel statusLabel = new JLabel("Time: -");
 
     private final GanttPanel gantt = new GanttPanel();
     private final DefaultTableModel resultModel =
             new DefaultTableModel(new String[]{"Process", "Arrival", "Finish", "TAT", "WT", "RT"}, 0);
     private final JLabel averagesLabel = new JLabel(" ");
     private final JTextArea logArea = new JTextArea(8, 40);
+
+    private Timer timer;
+    private List<Process> simProcesses = new ArrayList<>();
+    private final List<String> logLines = new ArrayList<>();
+    private final List<Integer> logTimes = new ArrayList<>();
+    private final List<Process> shown = new ArrayList<>();   
+    private int nextLog = 0;
+    private int currentTime = 0;
+    private int totalTime = 0;
 
     public MainFrame() {
         super("Cloud Cluster Scheduler Simulator");
@@ -36,26 +49,41 @@ public class MainFrame extends JFrame {
         add(buildCenter(), BorderLayout.CENTER);
 
         algoBox.addActionListener(e -> updateAlgoUI());
+        speedSlider.addChangeListener(e -> {
+            if (timer != null) timer.setDelay(delayMs());
+        });
         loadTestCase(1);
         updateAlgoUI();
 
-        setSize(950, 780);
+        setSize(950, 800);
         setLocationRelativeTo(null);
     }
 
 
     private JComponent buildTopPanel() {
-        JPanel p = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 6));
-        p.add(new JLabel("Scheduler:"));
-        p.add(algoBox);
-        p.add(new JLabel("Context switch (CS):"));
-        p.add(csSpinner);
-        p.add(new JLabel("Quantum (Q):"));
-        p.add(qSpinner);
+        JPanel row1 = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 4));
+        row1.add(new JLabel("Scheduler:"));
+        row1.add(algoBox);
+        row1.add(new JLabel("Context switch (CS):"));
+        row1.add(csSpinner);
+        row1.add(new JLabel("Quantum (Q):"));
+        row1.add(qSpinner);
 
-        JButton run = new JButton("Run");
-        run.addActionListener(e -> runSimulation());
-        p.add(run);
+        speedSlider.setPreferredSize(new Dimension(130, 24));
+        speedSlider.setToolTipText("Simulation speed");
+        runButton.addActionListener(e -> runSimulation());
+        resetButton.addActionListener(e -> resetOutputs());
+
+        JPanel row2 = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 4));
+        row2.add(new JLabel("Speed:"));
+        row2.add(speedSlider);
+        row2.add(runButton);
+        row2.add(resetButton);
+        row2.add(statusLabel);
+
+        JPanel p = new JPanel(new GridLayout(2, 1));
+        p.add(row1);
+        p.add(row2);
         return p;
     }
 
@@ -70,7 +98,7 @@ public class MainFrame extends JFrame {
         JButton t2 = new JButton("Test case 2");
 
         add.addActionListener(e ->
-                inputModel.addRow(new Object[]{"P" + (inputModel.getRowCount() + 1), 0, 1, 1}));
+                inputModel.addRow(new Object[]{nextName(), 0, 1, 1}));
         remove.addActionListener(e -> {
             if (inputTable.isEditing()) inputTable.getCellEditor().stopCellEditing();
             int row = inputTable.getSelectedRow();
@@ -88,7 +116,7 @@ public class MainFrame extends JFrame {
 
         JPanel ganttWrap = new JPanel(new BorderLayout());
         ganttWrap.setBorder(BorderFactory.createTitledBorder("Gantt chart"));
-        gantt.setPreferredSize(new Dimension(800, 100));
+        gantt.setPreferredSize(new Dimension(800, 105));
         ganttWrap.add(gantt, BorderLayout.CENTER);
 
         JTable resultTable = new JTable(resultModel);
@@ -120,7 +148,6 @@ public class MainFrame extends JFrame {
         return "SJF".equals(algoBox.getSelectedItem());
     }
 
-    /** SJF ignores priority and quantum, so hide / disable them. */
     private void updateAlgoUI() {
         boolean sjf = isSjf();
         qSpinner.setEnabled(!sjf);
@@ -133,7 +160,6 @@ public class MainFrame extends JFrame {
         }
     }
 
-    /** Same data as Main.testCaseProcesses(): test case 1 -> CS 0, test case 2 -> CS 1. */
     private void loadTestCase(int choice) {
         if (inputTable.isEditing()) inputTable.getCellEditor().stopCellEditing();
         inputModel.setRowCount(0);
@@ -151,18 +177,44 @@ public class MainFrame extends JFrame {
         qSpinner.setValue(3);
     }
 
-    /** Builds FRESH Process objects every run (the schedulers modify them). */
+    private String nextName() {
+        int i = inputModel.getRowCount() + 1;
+        while (nameExists("P" + i)) i++;
+        return "P" + i;
+    }
+
+    private boolean nameExists(String name) {
+        for (int r = 0; r < inputModel.getRowCount(); r++) {
+            if (String.valueOf(inputModel.getValueAt(r, 0)).trim().equalsIgnoreCase(name)) return true;
+        }
+        return false;
+    }
+
     private ArrayList<Process> readProcesses(boolean sjf) {
         if (inputTable.isEditing()) inputTable.getCellEditor().stopCellEditing();
 
         ArrayList<Process> list = new ArrayList<>();
+        Map<String, Integer> seenNames = new HashMap<>();   
+
         for (int i = 0; i < inputModel.getRowCount(); i++) {
             String name = String.valueOf(inputModel.getValueAt(i, 0)).trim();
+
+            if (name.isEmpty()) {
+                selectRow(i);
+                throw new IllegalArgumentException("Row " + (i + 1) + ": process name is required.");
+            }
+            Integer firstRow = seenNames.get(name.toLowerCase());
+            if (firstRow != null) {
+                selectRow(i);
+                throw new IllegalArgumentException("Row " + (i + 1) + ": duplicate process name \""
+                        + name + "\" (already used in row " + (firstRow + 1) + "). Names must be unique.");
+            }
+            seenNames.put(name.toLowerCase(), i);
+
             try {
                 int arrival = Integer.parseInt(String.valueOf(inputModel.getValueAt(i, 1)).trim());
                 int burst = Integer.parseInt(String.valueOf(inputModel.getValueAt(i, 2)).trim());
-                if (name.isEmpty() || arrival < 0 || burst <= 0)
-                    throw new NumberFormatException();
+                if (arrival < 0 || burst <= 0) throw new NumberFormatException();
 
                 if (sjf) {
                     list.add(new Process(name, arrival, burst));              
@@ -171,18 +223,29 @@ public class MainFrame extends JFrame {
                     list.add(new Process(name, arrival, burst, priority));    
                 }
             } catch (NumberFormatException ex) {
-                throw new IllegalArgumentException(
-                        "Row " + (i + 1) + ": name required, arrival >= 0, burst > 0, numbers only.");
+                selectRow(i);
+                throw new IllegalArgumentException("Row " + (i + 1)
+                        + ": arrival, burst and priority must be whole numbers (arrival >= 0, burst > 0).");
             }
         }
         if (list.isEmpty()) throw new IllegalArgumentException("Add at least one process.");
         return list;
     }
 
+    private void selectRow(int row) {
+        inputTable.setRowSelectionInterval(row, row);
+        inputTable.scrollRectToVisible(inputTable.getCellRect(row, 0, true));
+    }
+
+
+    private int delayMs() {
+        return 1100 - speedSlider.getValue() * 100;
+    }
+
     private void runSimulation() {
         try {
             boolean sjf = isSjf();
-            ArrayList<Process> processes = readProcesses(sjf);
+            ArrayList<Process> processes = readProcesses(sjf);   
 
             int cs = (Integer) csSpinner.getValue();
             int q = sjf ? 0 : (Integer) qSpinner.getValue();      
@@ -191,34 +254,29 @@ public class MainFrame extends JFrame {
             IScheduler scheduler = sjf ? new SJF() : new ACS();
             List<SimulationResult> result = scheduler.simulate(processes, config);
 
-            logArea.setText("");
+            resetOutputs();
+
             for (SimulationResult r : result) {
+                logTimes.add(r.getTime());
                 if (sjf) {
                     String running = (r.getName() == null || r.getName().isEmpty()) ? "Idle" : r.getName();
-                    logArea.append("Time " + r.getTime() + " | Running: " + running
-                            + " | Ready: " + readyQueue(r.getTier1Processes()) + "\n");
+                    logLines.add("Time " + r.getTime() + " | Running: " + running
+                            + " | Ready: " + readyQueue(r.getTier1Processes()));
                 } else {
-                    logArea.append(r + "\n");
+                    logLines.add(r.toString());
                 }
             }
-            logArea.setCaretPosition(0);
 
-            gantt.setSlices(buildSlices(result, processes));
+            List<Slice> slices = buildSlices(result, processes);
+            int total = 0;
+            for (Process p : processes) total = Math.max(total, p.getFinishTime());
+            for (Slice s : slices) total = Math.max(total, s.end);
 
-            resultModel.setRowCount(0);
-            double totalWT = 0, totalTAT = 0, totalRT = 0;
-            for (Process p : processes) {
-                resultModel.addRow(new Object[]{
-                        p.getName(), p.getArrivalTime(), p.getFinishTime(),
-                        p.getTurnAroundTime(), p.getWaitingTime(), p.getResponseTime()});
-                totalWT += p.getWaitingTime();
-                totalTAT += p.getTurnAroundTime();
-                totalRT += p.getResponseTime();
-            }
-            int n = processes.size();
-            averagesLabel.setText(String.format(
-                    "  Avg TAT: %.2f    Avg WT: %.2f    Avg RT: %.2f",
-                    totalTAT / n, totalWT / n, totalRT / n));
+            simProcesses = processes;
+            totalTime = total;
+            gantt.setData(slices, total);
+
+            startAnimation();
 
         } catch (IllegalArgumentException ex) {
             JOptionPane.showMessageDialog(this, ex.getMessage(), "Invalid input",
@@ -228,6 +286,91 @@ public class MainFrame extends JFrame {
             JOptionPane.showMessageDialog(this, "Simulation failed: " + ex,
                     "Error", JOptionPane.ERROR_MESSAGE);
         }
+    }
+
+    private void startAnimation() {
+        currentTime = 0;
+        nextLog = 0;
+        runButton.setEnabled(false);
+
+        advance();                                  
+        if (currentTime >= totalTime) return;       
+
+        timer = new Timer(delayMs(), e -> {
+            currentTime++;
+            advance();
+        });
+        timer.start();
+    }
+
+    private void advance() {
+        
+        while (nextLog < logLines.size() && logTimes.get(nextLog) <= currentTime) {
+            logArea.append(logLines.get(nextLog++) + "\n");
+        }
+        logArea.setCaretPosition(logArea.getDocument().getLength());
+
+        for (Process p : simProcesses) {
+            if (p.getFinishTime() <= currentTime && !shown.contains(p)) addResultRow(p);
+        }
+
+        gantt.setCurrentTime(currentTime);
+        statusLabel.setText("Time: " + Math.min(currentTime, totalTime) + " / " + totalTime);
+
+        if (currentTime >= totalTime) finishAnimation();
+    }
+
+    private void finishAnimation() {
+        if (timer != null) {
+            timer.stop();
+            timer = null;
+        }
+        while (nextLog < logLines.size()) logArea.append(logLines.get(nextLog++) + "\n");
+        for (Process p : simProcesses) {
+            if (!shown.contains(p)) addResultRow(p);
+        }
+
+        double totalWT = 0, totalTAT = 0, totalRT = 0;
+        for (Process p : simProcesses) {
+            totalWT += p.getWaitingTime();
+            totalTAT += p.getTurnAroundTime();
+            totalRT += p.getResponseTime();
+        }
+        int n = simProcesses.size();
+        if (n > 0) {
+            averagesLabel.setText(String.format(
+                    "  Avg TAT: %.2f    Avg WT: %.2f    Avg RT: %.2f",
+                    totalTAT / n, totalWT / n, totalRT / n));
+        }
+        runButton.setEnabled(true);
+    }
+
+    private void addResultRow(Process p) {
+        shown.add(p);
+        resultModel.addRow(new Object[]{
+                p.getName(), p.getArrivalTime(), p.getFinishTime(),
+                p.getTurnAroundTime(), p.getWaitingTime(), p.getResponseTime()});
+    }
+
+    private void resetOutputs() {
+        if (timer != null) {
+            timer.stop();
+            timer = null;
+        }
+        logArea.setText("");
+        resultModel.setRowCount(0);
+        averagesLabel.setText(" ");
+        statusLabel.setText("Time: -");
+        gantt.clear();
+
+        simProcesses = new ArrayList<>();
+        logLines.clear();
+        logTimes.clear();
+        shown.clear();
+        nextLog = 0;
+        currentTime = 0;
+        totalTime = 0;
+        runButton.setEnabled(true);
     }
 
     private static String readyQueue(List<Process> list) {
@@ -282,13 +425,17 @@ public class MainFrame extends JFrame {
 
         private List<Slice> slices = new ArrayList<>();
         private final Map<String, Color> colors = new HashMap<>();
+        private int total = 0;
+        private int currentTime = 0;
 
         GanttPanel() {
             setBackground(Color.WHITE);
         }
 
-        void setSlices(List<Slice> slices) {
+        void setData(List<Slice> slices, int total) {
             this.slices = slices;
+            this.total = total;
+            this.currentTime = 0;
             colors.clear();
             int next = 0;
             for (Slice s : slices) {
@@ -299,6 +446,19 @@ public class MainFrame extends JFrame {
             repaint();
         }
 
+        void setCurrentTime(int t) {
+            this.currentTime = t;
+            repaint();
+        }
+
+        void clear() {
+            slices = new ArrayList<>();
+            colors.clear();
+            total = 0;
+            currentTime = 0;
+            repaint();
+        }
+
         @Override
         protected void paintComponent(Graphics g0) {
             super.paintComponent(g0);
@@ -306,20 +466,28 @@ public class MainFrame extends JFrame {
             g.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING,
                     RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
 
-            if (slices.isEmpty()) {
+            if (total <= 0) {
                 g.setColor(Color.GRAY);
                 g.drawString("Press Run to see the timeline.", 20, 40);
                 return;
             }
 
-            int left = 20, top = 15, barH = 40;
-            int total = slices.get(slices.size() - 1).end;
+            int left = 20, top = 24, barH = 40;
             double unit = (getWidth() - 2 * left) / (double) total;
+            int trackEnd = left + (int) Math.round(total * unit);
             FontMetrics fm = g.getFontMetrics();
 
+            g.setColor(new Color(0xF2F2F2));
+            g.fillRect(left, top, trackEnd - left, barH);
+            g.setColor(Color.LIGHT_GRAY);
+            g.drawRect(left, top, trackEnd - left, barH);
+
             for (Slice s : slices) {
+                if (s.start >= currentTime) continue;            
+                int visEnd = Math.min(s.end, currentTime);       
                 int x = left + (int) Math.round(s.start * unit);
-                int w = Math.max(1, (int) Math.round((s.end - s.start) * unit));
+                int xEnd = left + (int) Math.round(visEnd * unit);
+                int w = Math.max(1, xEnd - x);
                 boolean idle = s.name.isEmpty();
 
                 g.setColor(idle ? new Color(0xDDDDDD) : colors.get(s.name));
@@ -333,8 +501,16 @@ public class MainFrame extends JFrame {
                 }
                 g.drawString(String.valueOf(s.start), x, top + barH + 16);
             }
-            g.drawString(String.valueOf(total),
-                    left + (int) Math.round(total * unit), top + barH + 16);
+
+            if (currentTime >= total) {
+                g.setColor(Color.DARK_GRAY);
+                g.drawString(String.valueOf(total), trackEnd, top + barH + 16);
+            } else {
+                int x = left + (int) Math.round(currentTime * unit);
+                g.setColor(Color.RED);
+                g.drawLine(x, top - 6, x, top + barH + 4);
+                g.drawString("t=" + currentTime, x + 4, top - 9);
+            }
         }
     }
 }
